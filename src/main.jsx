@@ -179,13 +179,79 @@ function Login({ onLoginSuccess }) {
   );
 }
 
+function ProfileSetup({ user, onComplete, onLogout }) {
+  const [firstName, setFirstName] = useState(user.first_name || '');
+  const [lastName, setLastName] = useState(user.last_name || '');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      const updatedUser = await api.auth.updateProfile({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+      });
+      onComplete(updatedUser);
+    } catch (err) {
+      setError(err.message || 'No se pudo guardar tu nombre');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <main className="profile-setup-page">
+      <section className="login-card profile-setup-card">
+        <Logo />
+        <div className="login-heading">
+          <span className="step-label">PRIMER INGRESO</span>
+          <h2>¿Cómo te llamas?</h2>
+          <p>Completa tu nombre antes de continuar. Aparecerá en tu cuenta y en los registros de actividad.</p>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <label>Nombre
+            <input
+              type="text"
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+              autoComplete="given-name"
+              maxLength="150"
+              required
+              autoFocus
+            />
+          </label>
+          <label>Apellido (opcional)
+            <input
+              type="text"
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+              autoComplete="family-name"
+              maxLength="150"
+            />
+          </label>
+          {error && <div className="form-error" role="alert">{error}</div>}
+          <button className="primary full" type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar y continuar'}
+          </button>
+        </form>
+        <button className="text-button profile-setup-logout" type="button" onClick={onLogout}>
+          Cerrar sesión
+        </button>
+      </section>
+    </main>
+  );
+}
+
 function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 2 }) {
   const role = user?.profile?.role || 'operador';
   const items = [
     ['dashboard', 'Búsqueda de documentos', Search],
     ...(['supervisor', 'admin'].includes(role) ? [['approvals', 'Bandeja de aprobaciones', FileCheck2]] : []),
     ...(['supervisor', 'auditor', 'admin'].includes(role) ? [['audit', 'Auditoría y trazabilidad', ShieldCheck]] : []),
-    ...(role === 'admin' ? [['admin-users', 'Administrar usuarios', UsersRound]] : []),
+    ...(role === 'admin' ? [['admin-users', 'Usuarios', UsersRound]] : []),
   ];
 
   const roleLabels = {
@@ -254,8 +320,9 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
     auditor: 'Auditor',
     admin: 'Administrador',
   }[user?.profile?.role] || 'Usuario';
-  const fullName = user?.first_name ? `${user.first_name} ${user.last_name || ''}` : 'Camila Vargas';
-  const initials = user?.first_name ? `${user.first_name[0]}${user.last_name ? user.last_name[0] : 'V'}` : 'CV';
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ')
+    || user?.email || user?.username || 'Usuario NUAM';
+  const initials = fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 
   return (
     <header className="topbar">
@@ -296,7 +363,7 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
           {userOpen && (
             <div className="popover user-menu">
               <strong>{fullName}</strong>
-              <small>{user?.email || 'usuario@nuam.com'}</small>
+              <small>{user?.email || user?.username}</small>
               <button onClick={() => window.alert(`Perfil: ${roleName} - País: ${user?.profile?.country || 'Chile'}`)}>
                 Mi perfil
               </button>
@@ -1263,7 +1330,6 @@ function AdminUsers({ user, onLogout }) {
   const [formError, setFormError] = useState('');
   const [createdCredentials, setCreatedCredentials] = useState(null);
   const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
   const [selectedRole, setSelectedRole] = useState('operador');
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState('');
@@ -1290,23 +1356,19 @@ function AdminUsers({ user, onLogout }) {
     admin: 'Administrador',
   };
   const roleDescriptions = {
-    operador: 'Gestiona expedientes tributarios.',
-    supervisor: 'Gestiona expedientes y resuelve aprobaciones.',
-    auditor: 'Consulta expedientes y trazabilidad.',
-    admin: 'Administra cuentas, roles y accesos.',
+    operador: 'Puede buscar documentos y registrar o editar expedientes.',
+    supervisor: 'Puede gestionar expedientes, resolver aprobaciones y consultar auditoría.',
+    auditor: 'Puede consultar documentos e historial, pero no editar.',
+    admin: 'Puede revisar documentos, resolver aprobaciones, consultar auditoría y administrar usuarios.',
   };
   const filteredUsers = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return users.filter((account) => {
       const name = `${account.first_name} ${account.last_name}`.trim();
-      const matchesSearch = !query || [name, account.email, account.username]
+      return !query || [name, account.email, account.username]
         .some((value) => value?.toLocaleLowerCase().includes(query));
-      const matchesRole = roleFilter === 'all' || account.profile?.role === roleFilter;
-      return matchesSearch && matchesRole;
     });
-  }, [users, search, roleFilter]);
-  const administratorCount = users.filter((account) => account.profile?.role === 'admin').length;
-  const protectedCount = users.filter((account) => account.profile?.is_2fa_enabled).length;
+  }, [users, search]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -1344,54 +1406,37 @@ function AdminUsers({ user, onLogout }) {
   return (
     <>
       <Header
-        title="Usuarios y accesos"
-        subtitle="Administra las cuentas y permisos de tu organización."
+        title="Usuarios"
+        subtitle="Crea y consulta las cuentas de tu equipo."
         user={user}
         onLogout={onLogout}
       />
       <div className="page-content admin-page">
         <div className="admin-intro">
           <div>
-            <span className="eyebrow dark">CONTROL DE ACCESO</span>
-            <h2>Gestiona quién puede acceder</h2>
-            <p>Crea cuentas y asigna permisos según las responsabilidades de cada persona.</p>
+            <h2>¿Para qué sirve esta sección?</h2>
+            <p>Aquí creas cuentas y eliges qué puede hacer cada persona en la plataforma.</p>
           </div>
-          <div className="admin-intro-mark" aria-hidden="true"><UsersRound size={25} /></div>
-        </div>
-
-        <div className="admin-summary-grid">
-          <article className="admin-summary-card">
-            <span className="admin-summary-icon blue"><UsersRound size={17} /></span>
-            <div><small>CUENTAS REGISTRADAS</small><strong>{loading ? '—' : users.length}</strong></div>
-          </article>
-          <article className="admin-summary-card">
-            <span className="admin-summary-icon purple"><ShieldCheck size={17} /></span>
-            <div><small>ADMINISTRADORES</small><strong>{loading ? '—' : administratorCount}</strong></div>
-          </article>
-          <article className="admin-summary-card">
-            <span className="admin-summary-icon green"><LockKeyhole size={17} /></span>
-            <div><small>CON SEGUNDO FACTOR</small><strong>{loading ? '—' : protectedCount}</strong></div>
-          </article>
         </div>
 
         <div className="admin-layout">
           <section className="admin-create-panel">
             <div className="admin-panel-heading">
               <span className="admin-panel-icon"><UserPlus size={18} /></span>
-              <div><h3>Crear cuenta</h3><p>El acceso se habilita al guardar.</p></div>
+              <div><h3>Crear usuario</h3><p>Completa sus datos y selecciona sus permisos.</p></div>
             </div>
             <div className="admin-security-note">
               <ShieldCheck size={16} />
-              <span>La cuenta quedará protegida con verificación en dos pasos.</span>
+              <span>Al terminar, copia la contraseña temporal y compártela por un canal seguro. El inicio de sesión usa verificación en dos pasos.</span>
             </div>
             <form className="admin-user-form" onSubmit={handleCreate}>
-              <label>Nombre completo
+              <label>Nombre y apellido
                 <input name="full_name" placeholder="Ej. Camila Vargas" required maxLength="150" autoComplete="name" />
               </label>
-              <label>Correo institucional
+              <label>Correo electrónico
                 <input name="email" type="email" placeholder="nombre@empresa.cl" required autoComplete="email" />
               </label>
-              <label>Rol
+              <label>Permisos
                 <select name="role" required value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)}>
                   <option value="operador">Operador</option>
                   <option value="supervisor">Supervisor</option>
@@ -1400,7 +1445,7 @@ function AdminUsers({ user, onLogout }) {
                 </select>
                 <small className="admin-field-hint">{roleDescriptions[selectedRole]}</small>
               </label>
-              <label>País
+              <label>País de trabajo
                 <select name="country" required defaultValue="Chile">
                   <option value="Chile">Chile</option>
                   <option value="Colombia">Colombia</option>
@@ -1409,7 +1454,7 @@ function AdminUsers({ user, onLogout }) {
               </label>
               {formError && <div className="form-error" role="alert">{formError}</div>}
               <button className="primary admin-create-button" type="submit" disabled={saving}>
-                {saving ? 'Creando cuenta…' : 'Crear usuario'} <UserPlus size={16} />
+                {saving ? 'Creando usuario…' : 'Crear usuario'} <UserPlus size={16} />
               </button>
             </form>
             {createdCredentials && (
@@ -1418,7 +1463,7 @@ function AdminUsers({ user, onLogout }) {
                   <div><strong>Cuenta creada</strong><span>{createdCredentials.email}</span></div>
                   <button type="button" className="admin-dismiss" aria-label="Ocultar contraseña temporal" onClick={() => { setCreatedCredentials(null); setCopyError(''); }}><X size={16} /></button>
                 </div>
-                <span>Comparte esta contraseña por un canal seguro. Solo se muestra ahora.</span>
+                <span>Compártela por un canal seguro. No volverá a mostrarse.</span>
                 <div className="admin-password-row">
                   <code>{createdCredentials.password}</code>
                   <button type="button" className="secondary" onClick={handleCopyPassword}>
@@ -1433,7 +1478,7 @@ function AdminUsers({ user, onLogout }) {
 
           <section className="admin-directory">
             <div className="admin-directory-heading">
-              <div><h3>Directorio de usuarios</h3><p>Consulta las cuentas y sus niveles de acceso.</p></div>
+              <div><h3>Usuarios creados</h3><p>Busca una cuenta para consultar sus permisos.</p></div>
               <span className="count-pill">{loading ? '…' : users.length}</span>
             </div>
             <div className="admin-directory-tools">
@@ -1441,10 +1486,6 @@ function AdminUsers({ user, onLogout }) {
                 <Search size={16} aria-hidden="true" />
                 <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre o correo" aria-label="Buscar usuarios" />
               </label>
-              <select className="admin-role-filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} aria-label="Filtrar por rol">
-                <option value="all">Todos los roles</option>
-                {Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
             </div>
             {listError && (
               <div className="admin-list-error" role="alert">
@@ -1454,10 +1495,10 @@ function AdminUsers({ user, onLogout }) {
             )}
             <div className="table-scroll">
               <table className="admin-users-table">
-                <thead><tr><th>PERSONA</th><th>ROL</th><th>PAÍS</th><th>SEGURIDAD</th></tr></thead>
+                <thead><tr><th>PERSONA</th><th>PERMISOS</th></tr></thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan="4" className="empty">Cargando directorio…</td></tr>
+                    <tr><td colSpan="2" className="empty">Cargando usuarios…</td></tr>
                   ) : filteredUsers.map((account) => {
                     const name = `${account.first_name} ${account.last_name}`.trim() || account.username;
                     const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
@@ -1471,14 +1512,12 @@ function AdminUsers({ user, onLogout }) {
                           </div>
                         </td>
                         <td><span className={`admin-role-badge role-${role || 'none'}`}>{roleLabels[role] || 'Sin rol'}</span></td>
-                        <td>{account.profile?.country || '—'}</td>
-                        <td><span className={`admin-mfa-status ${account.profile?.is_2fa_enabled ? 'enabled' : ''}`}><i />{account.profile?.is_2fa_enabled ? '2FA activo' : '2FA inactivo'}</span></td>
                       </tr>
                     );
                   })}
                   {!loading && filteredUsers.length === 0 && (
-                    <tr><td colSpan="4" className="admin-empty">
-                      {users.length ? 'No hay cuentas que coincidan con esos filtros.' : 'Aún no hay usuarios. Crea la primera cuenta desde el formulario.'}
+                    <tr><td colSpan="2" className="admin-empty">
+                      {users.length ? 'No encontramos usuarios con ese nombre o correo.' : 'Aún no hay usuarios. Crea la primera cuenta con el formulario.'}
                     </td></tr>
                   )}
                 </tbody>
@@ -1518,6 +1557,9 @@ function App() {
 
   if (!user) {
     return <Login onLoginSuccess={(u) => setUser(u)} />;
+  }
+  if (!user.first_name?.trim()) {
+    return <ProfileSetup user={user} onComplete={setUser} onLogout={handleLogout} />;
   }
 
   const renderContent = () => {

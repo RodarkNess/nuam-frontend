@@ -48,6 +48,20 @@ export const api = {
       return res.json();
     },
 
+    async updateProfile(profile) {
+      const res = await fetch(`${API_BASE_URL}/auth/me/`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(profile),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || Object.values(data).flat().join(' ') || 'No se pudo guardar el nombre');
+      }
+      localStorage.setItem('nuam_user', JSON.stringify(data));
+      return data;
+    },
+
     logout() {
       localStorage.removeItem('nuam_access_token');
       localStorage.removeItem('nuam_refresh_token');
