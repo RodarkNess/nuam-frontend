@@ -13,6 +13,19 @@ La API local usa `http://127.0.0.1:8000/api/v1` por defecto. Para cambiarla, def
 
 El backend se ejecuta con `python manage.py runserver` desde `nuam-backend`. La guía de instalación, variables, migración aditiva y pruebas está en [`nuam-backend/README.md`](../nuam-backend/README.md).
 
+## Despliegue en Vercel
+
+El frontend usa `VITE_API_BASE_URL` cuando está configurada. En producción sin esa variable usa el proxy `/api/v1` incluido en `api/v1/[...path].js`.
+
+Configura estas variables en Vercel:
+
+- `NUAM_BACKEND_URL`: URL pública del backend Django, por ejemplo `https://tu-backend.onrender.com` o el dominio equivalente.
+
+La instancia actual está configurada como respaldo en `https://nuam-backend-t5z9.vercel.app`.
+- Opcional: `VITE_API_BASE_URL`: URL directa del backend incluyendo `/api/v1`. Si se define, el navegador se conectará directamente y el backend deberá permitir el dominio de Vercel mediante CORS.
+
+No uses una URL de Supabase como `VITE_API_BASE_URL`; Supabase almacena la base de datos, pero no reemplaza automáticamente los endpoints Django de `/api/v1`.
+
 ## Roles
 
 - **Operador:** consulta, crea y modifica expedientes; carga de archivos.
