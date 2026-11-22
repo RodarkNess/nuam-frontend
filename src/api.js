@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:8000/api/v1';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1').replace(/\/$/, '');
 
 function getAuthHeaders() {
   const token = localStorage.getItem('nuam_access_token');
@@ -9,6 +9,11 @@ function getAuthHeaders() {
     headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
+}
+
+function getMultipartHeaders() {
+  const token = localStorage.getItem('nuam_access_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export const api = {
@@ -56,6 +61,36 @@ export const api = {
   },
 
   taxRecords: {
+    async create(formData) {
+      const res = await fetch(`${API_BASE_URL}/tax-records/`, {
+        method: 'POST',
+        headers: getMultipartHeaders(),
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || Object.values(data).flat().join(' ') || 'Error al crear expediente');
+      return data;
+    },
+
+    async update(id, formData) {
+      const res = await fetch(`${API_BASE_URL}/tax-records/${id}/`, {
+        method: 'PATCH',
+        headers: getMultipartHeaders(),
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || Object.values(data).flat().join(' ') || 'Error al actualizar expediente');
+      return data;
+    },
+
+    async delete(id) {
+      const res = await fetch(`${API_BASE_URL}/tax-records/${id}/`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error('Error al eliminar lógicamente el expediente');
+    },
+
     async getAll(params = {}) {
       const query = new URLSearchParams();
       if (params.search) query.append('search', params.search);
@@ -169,6 +204,29 @@ export const api = {
       });
       if (!res.ok) throw new Error('Error al obtener registros de auditoría');
       return res.json();
+    },
+  },
+
+  admin: {
+    async getUsers() {
+      const res = await fetch(`${API_BASE_URL}/admin/users/`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error('No fue posible obtener los usuarios');
+      return res.json();
+    },
+
+    async createUser(user) {
+      const res = await fetch(`${API_BASE_URL}/admin/users/`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(user),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || Object.values(data).flat().join(' ') || 'No fue posible crear el usuario');
+      }
+      return data;
     },
   },
 };

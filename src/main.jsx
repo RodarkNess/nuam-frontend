@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
-  ArrowLeft, ArrowRight, Bell, Check, ChevronDown, Clock3, CloudUpload,
+  ArrowLeft, ArrowRight, Bell, Check, ChevronDown, Clock3, CloudUpload, Copy,
   Download, FileCheck2, FileText, Filter, HelpCircle, LayoutDashboard,
-  LockKeyhole, LogOut, Menu, MoreHorizontal, Plus, Search, ShieldCheck,
+  LockKeyhole, LogOut, Menu, MoreHorizontal, Plus, Search, ShieldCheck, UserPlus,
   SlidersHorizontal, UploadCloud, UsersRound, X, AlertTriangle
 } from 'lucide-react';
 import { api } from './api';
@@ -20,9 +20,10 @@ function Logo({ light = false }) {
 
 function Login({ onLoginSuccess }) {
   const [step, setStep] = useState('credentials');
-  const [email, setEmail] = useState('camila.vargas@nuam.com');
-  const [password, setPassword] = useState('Admin1234*');
-  const [twoFactorCode, setTwoFactorCode] = useState(['1', '2', '3', '4', '5', '6']);
+  const [deliveryMode, setDeliveryMode] = useState('email');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -33,6 +34,7 @@ function Login({ onLoginSuccess }) {
     try {
       const res = await api.auth.login(email, password);
       if (res.requires_2fa) {
+        setDeliveryMode(res.delivery_mode || 'email');
         setStep('mfa');
       } else {
         onLoginSuccess(res.user);
@@ -60,7 +62,7 @@ function Login({ onLoginSuccess }) {
   };
 
   const handleOtpChange = (index, val) => {
-    if (val.length > 1) val = val[0];
+    val = val.replace(/\D/g, '').slice(-1);
     const newArr = [...twoFactorCode];
     newArr[index] = val;
     setTwoFactorCode(newArr);
@@ -95,7 +97,9 @@ function Login({ onLoginSuccess }) {
             <p>
               {step === 'credentials'
                 ? 'Ingresa tus credenciales institucionales para acceder.'
-                : 'Ingresa el código de 6 dígitos de tu aplicación de autenticación.'}
+                : deliveryMode === 'console'
+                  ? 'Entorno local: revisa la consola del backend para obtener el código de prueba.'
+                  : `Ingresa el código de 6 dígitos enviado a ${email}.`}
             </p>
           </div>
 
@@ -135,6 +139,9 @@ function Login({ onLoginSuccess }) {
                     id={`otp-${i}`}
                     maxLength="1"
                     inputMode="numeric"
+                    pattern="[0-9]"
+                    autoComplete={i === 0 ? 'one-time-code' : 'off'}
+                    required
                     value={digit}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     autoFocus={i === 0}
@@ -142,7 +149,7 @@ function Login({ onLoginSuccess }) {
                   />
                 ))}
               </div>
-              <p className="muted center">Código de demostración precargado: <strong>123456</strong></p>
+              <p className="muted center">El código vence en 5 minutos y solo puede utilizarse una vez.</p>
               {error && <div className="form-error">{error}</div>}
               <button className="primary full" type="submit" disabled={loading}>
                 {loading ? 'Verificando...' : 'Ingresar'} <ShieldCheck size={17} />
@@ -150,7 +157,10 @@ function Login({ onLoginSuccess }) {
               <button
                 className="text-button full"
                 type="button"
-                onClick={() => setStep('credentials')}
+                onClick={() => {
+                  setTwoFactorCode(['', '', '', '', '', '']);
+                  setStep('credentials');
+                }}
               >
                 <ArrowLeft size={15} /> Volver a credenciales
               </button>
@@ -170,14 +180,21 @@ function Login({ onLoginSuccess }) {
 }
 
 function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 2 }) {
+  const role = user?.profile?.role || 'operador';
   const items = [
     ['dashboard', 'Búsqueda de documentos', Search],
-    ['upload', 'Carga masiva', UploadCloud],
-    ['approvals', 'Bandeja de aprobaciones', FileCheck2],
-    ['audit', 'Auditoría y trazabilidad', ShieldCheck],
+    ...(['supervisor', 'admin'].includes(role) ? [['approvals', 'Bandeja de aprobaciones', FileCheck2]] : []),
+    ...(['supervisor', 'auditor', 'admin'].includes(role) ? [['audit', 'Auditoría y trazabilidad', ShieldCheck]] : []),
+    ...(role === 'admin' ? [['admin-users', 'Administrar usuarios', UsersRound]] : []),
   ];
 
-  const roleDisplay = user?.profile?.role === 'supervisor' ? 'Supervisor tributario' : 'Operador tributario';
+  const roleLabels = {
+    operador: 'Operador tributario',
+    supervisor: 'Supervisor tributario',
+    auditor: 'Auditor',
+    admin: 'Administrador',
+  };
+  const roleDisplay = roleLabels[role] || 'Usuario';
   const userInitials = user?.first_name ? `${user.first_name[0]}${user.last_name ? user.last_name[0] : ''}` : 'NU';
 
   return (
@@ -216,7 +233,7 @@ function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 2 
           <span className="status-dot" />
           <span>
             <strong>Integridad SHA-256 Activa</strong>
-            <small>SQLite MVP · Supabase Ready</small>
+            <small>PostgreSQL · Supabase</small>
           </span>
         </div>
         <button className="logout" onClick={onLogout}>
@@ -231,7 +248,12 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
 
-  const roleName = user?.profile?.role === 'supervisor' ? 'Supervisor' : 'Operador';
+  const roleName = {
+    operador: 'Operador',
+    supervisor: 'Supervisor',
+    auditor: 'Auditor',
+    admin: 'Administrador',
+  }[user?.profile?.role] || 'Usuario';
   const fullName = user?.first_name ? `${user.first_name} ${user.last_name || ''}` : 'Camila Vargas';
   const initials = user?.first_name ? `${user.first_name[0]}${user.last_name ? user.last_name[0] : 'V'}` : 'CV';
 
@@ -348,9 +370,11 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
             <span className="eyebrow dark">CONSULTA INDEXADA</span>
             <h2>Búsqueda de documentos</h2>
           </div>
-          <button className="primary" onClick={() => setScreen('upload')}>
-            <Plus size={17} /> Nueva carga masiva
-          </button>
+          {['operador', 'supervisor'].includes(user?.profile?.role) && (
+            <button className="primary" onClick={() => { setSelectedRecord(null); setScreen('record-form'); }}>
+              <Plus size={17} /> Nuevo expediente
+            </button>
+          )}
         </div>
 
         {/* Barra de búsqueda principal */}
@@ -499,7 +523,7 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
   );
 }
 
-function Detail({ record, setScreen, user, onLogout }) {
+function Detail({ record, setScreen, setSelectedRecord, user, onLogout }) {
   const [detailData, setDetailData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -517,6 +541,16 @@ function Detail({ record, setScreen, user, onLogout }) {
   const handleDownload = async () => {
     try {
       await api.taxRecords.downloadPdf(rec.id, `${rec.folio}.pdf`);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`¿Eliminar lógicamente el expediente ${rec.folio}?`)) return;
+    try {
+      await api.taxRecords.delete(rec.id);
+      setScreen('dashboard');
     } catch (err) {
       alert(err.message);
     }
@@ -546,12 +580,25 @@ function Detail({ record, setScreen, user, onLogout }) {
             <p>Folio: {rec?.folio} · Ejercicio: {rec?.year} · Origen: {rec?.origin}</p>
           </div>
           <div className="detail-actions">
+            {['operador', 'supervisor'].includes(user?.profile?.role) && (
+              <button
+                className="secondary"
+                onClick={() => { setSelectedRecord(rec); setScreen('record-form'); }}
+              >
+                Editar
+              </button>
+            )}
+            {['supervisor', 'admin'].includes(user?.profile?.role) && (
+              <button className="reject" onClick={handleDelete}>Eliminar</button>
+            )}
             <button className="primary" onClick={handleDownload}>
               <Download size={16} /> Descargar PDF
             </button>
-            <button className="secondary" onClick={() => setScreen('approvals')}>
-              Continuar a aprobación <ArrowRight size={15} />
-            </button>
+            {['supervisor', 'admin'].includes(user?.profile?.role) && (
+              <button className="secondary" onClick={() => setScreen('approvals')}>
+                Continuar a aprobación <ArrowRight size={15} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -609,11 +656,11 @@ function Detail({ record, setScreen, user, onLogout }) {
               
               <div className="hash-badge" style={{ marginBottom: '14px', display: 'flex' }}>
                 <ShieldCheck size={16} />
-                <span>Hash SHA-256 Verificado</span>
+                <span>{rec?.is_hash_verified ? 'Hash SHA-256 Verificado' : 'Hash SHA-256 no verificado'}</span>
               </div>
               <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', fontSize: '10px', color: '#64748b', marginBottom: '14px' }}>
                 <strong style={{ display: 'block', color: '#334155' }}>Huella digital SHA-256:</strong>
-                <span className="mono">{rec?.sha256_hash || '6f2c9a048e3b17d5c0a8f69e12b4d730a5e1938c7d60f241b9e8a0524c6d3f17'}</span>
+                <span className="mono">{rec?.sha256_hash || 'Sin documento original almacenado'}</span>
               </div>
 
               <button className="secondary full" onClick={handleDownload}>
@@ -654,6 +701,83 @@ function Detail({ record, setScreen, user, onLogout }) {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function RecordForm({ record, setScreen, setSelectedRecord, user, onLogout }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    const formData = new FormData(event.currentTarget);
+    if (formData.get('amount') === '') formData.delete('amount');
+    const file = formData.get('document_file');
+    if (!file?.size) formData.delete('document_file');
+    if (file?.size > 25 * 1024 * 1024) {
+      setError('El documento no puede superar 25 MB.');
+      setSaving(false);
+      return;
+    }
+    if (file?.size) formData.set('document_name', file.name);
+    try {
+      const saved = record
+        ? await api.taxRecords.update(record.id, formData)
+        : await api.taxRecords.create(formData);
+      setSelectedRecord(saved);
+      setScreen(record ? 'detail' : 'dashboard');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <Header
+        title={record ? 'Editar expediente' : 'Nuevo expediente tributario'}
+        subtitle="Registra metadatos estructurados y conserva el documento original con verificación SHA-256."
+        user={user}
+        onLogout={onLogout}
+      />
+      <div className="page-content narrow-page">
+        <button className="back-link" onClick={() => setScreen(record ? 'detail' : 'dashboard')}>
+          <ArrowLeft size={15} /> Volver
+        </button>
+        <div className="content-card">
+          <h3>{record ? 'Actualizar datos del expediente' : 'Registrar expediente'}</h3>
+          <form className="admin-user-form" onSubmit={handleSubmit}>
+            <label>Folio<input name="folio" required maxLength="50" defaultValue={record?.folio || ''} /></label>
+            <label>RUT<input name="rut" required maxLength="25" defaultValue={record?.rut || ''} /></label>
+            <label>Contribuyente / emisor<input name="company_name" required maxLength="200" defaultValue={record?.company_name || ''} /></label>
+            <label>Ejercicio<input name="year" type="number" min="2000" max="2100" required defaultValue={record?.year || new Date().getFullYear()} /></label>
+            <label>País
+              <select name="country" required defaultValue={record?.country || 'Chile'}>
+                <option value="Chile">Chile</option><option value="Colombia">Colombia</option><option value="Peru">Perú</option>
+              </select>
+            </label>
+            <label>Tipo de documento<input name="doc_type" required maxLength="100" defaultValue={record?.doc_type || 'Certificado tributario'} /></label>
+            <label>Monto<input name="amount" type="number" step="0.01" min="0" defaultValue={record?.amount || ''} /></label>
+            <label>Moneda<input name="currency" required maxLength="10" defaultValue={record?.currency || 'CLP'} /></label>
+            <label>Origen<input name="origin" maxLength="100" defaultValue={record?.origin || ''} /></label>
+            <label>Documento original (PDF){record && <small>Opcional si no cambia el archivo actual.</small>}
+              <input name="document_file" type="file" accept="application/pdf,.pdf" required={!record} />
+            </label>
+            <label>Notas<textarea name="notes" maxLength="5000" defaultValue={record?.notes || ''} /></label>
+            {error && <div className="form-error" role="alert">{error}</div>}
+            <div className="upload-actions">
+              <button className="secondary" type="button" onClick={() => setScreen(record ? 'detail' : 'dashboard')}>Cancelar</button>
+              <button className="primary" type="submit" disabled={saving}>
+                {saving ? 'Guardando...' : record ? 'Guardar cambios' : 'Crear expediente'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </>
@@ -1028,22 +1152,24 @@ function Approvals({ setScreen, setSelectedRecord, user, onLogout }) {
                   Se requiere un comentario justificado para registrar la aprobación o el rechazo en el log de auditoría.
                 </small>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-                  <button
-                    className="reject"
-                    disabled={actionLoading || !comment.trim()}
-                    onClick={() => handleResolve('reject')}
-                  >
-                    Rechazar
-                  </button>
-                  <button
-                    className="primary"
-                    disabled={actionLoading || !comment.trim()}
-                    onClick={() => handleResolve('approve')}
-                  >
-                    <Check size={16} /> Aprobar entrega al SII
-                  </button>
-                </div>
+                {['supervisor', 'admin'].includes(user?.profile?.role) && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
+                    <button
+                      className="reject"
+                      disabled={actionLoading || !comment.trim()}
+                      onClick={() => handleResolve('reject')}
+                    >
+                      Rechazar
+                    </button>
+                    <button
+                      className="primary"
+                      disabled={actionLoading || !comment.trim()}
+                      onClick={() => handleResolve('approve')}
+                    >
+                      <Check size={16} /> Aprobar entrega al SII
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -1129,11 +1255,260 @@ function Audit({ setScreen, user, onLogout }) {
   );
 }
 
+function AdminUsers({ user, onLogout }) {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [listError, setListError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [createdCredentials, setCreatedCredentials] = useState(null);
+  const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [selectedRole, setSelectedRole] = useState('operador');
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
+
+  const fetchUsers = async () => {
+    try {
+      setUsers(await api.admin.getUsers());
+      setListError('');
+    } catch (err) {
+      setListError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const roleLabels = {
+    operador: 'Operador',
+    supervisor: 'Supervisor',
+    auditor: 'Auditor',
+    admin: 'Administrador',
+  };
+  const roleDescriptions = {
+    operador: 'Gestiona expedientes tributarios.',
+    supervisor: 'Gestiona expedientes y resuelve aprobaciones.',
+    auditor: 'Consulta expedientes y trazabilidad.',
+    admin: 'Administra cuentas, roles y accesos.',
+  };
+  const filteredUsers = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return users.filter((account) => {
+      const name = `${account.first_name} ${account.last_name}`.trim();
+      const matchesSearch = !query || [name, account.email, account.username]
+        .some((value) => value?.toLocaleLowerCase().includes(query));
+      const matchesRole = roleFilter === 'all' || account.profile?.role === roleFilter;
+      return matchesSearch && matchesRole;
+    });
+  }, [users, search, roleFilter]);
+  const administratorCount = users.filter((account) => account.profile?.role === 'admin').length;
+  const protectedCount = users.filter((account) => account.profile?.is_2fa_enabled).length;
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setFormError('');
+    setCreatedCredentials(null);
+    setCopied(false);
+    setCopyError('');
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    try {
+      const result = await api.admin.createUser(Object.fromEntries(form.entries()));
+      setUsers((current) => [result.user, ...current]);
+      setCreatedCredentials({ email: result.user.email, password: result.temporary_password });
+      formElement.reset();
+      setSelectedRole('operador');
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopyPassword = async () => {
+    try {
+      await navigator.clipboard.writeText(createdCredentials.password);
+      setCopied(true);
+      setCopyError('');
+    } catch {
+      setCopied(false);
+      setCopyError('No se pudo copiar. Selecciona la contraseña para copiarla manualmente.');
+    }
+  };
+
+  return (
+    <>
+      <Header
+        title="Usuarios y accesos"
+        subtitle="Administra las cuentas y permisos de tu organización."
+        user={user}
+        onLogout={onLogout}
+      />
+      <div className="page-content admin-page">
+        <div className="admin-intro">
+          <div>
+            <span className="eyebrow dark">CONTROL DE ACCESO</span>
+            <h2>Gestiona quién puede acceder</h2>
+            <p>Crea cuentas y asigna permisos según las responsabilidades de cada persona.</p>
+          </div>
+          <div className="admin-intro-mark" aria-hidden="true"><UsersRound size={25} /></div>
+        </div>
+
+        <div className="admin-summary-grid">
+          <article className="admin-summary-card">
+            <span className="admin-summary-icon blue"><UsersRound size={17} /></span>
+            <div><small>CUENTAS REGISTRADAS</small><strong>{loading ? '—' : users.length}</strong></div>
+          </article>
+          <article className="admin-summary-card">
+            <span className="admin-summary-icon purple"><ShieldCheck size={17} /></span>
+            <div><small>ADMINISTRADORES</small><strong>{loading ? '—' : administratorCount}</strong></div>
+          </article>
+          <article className="admin-summary-card">
+            <span className="admin-summary-icon green"><LockKeyhole size={17} /></span>
+            <div><small>CON SEGUNDO FACTOR</small><strong>{loading ? '—' : protectedCount}</strong></div>
+          </article>
+        </div>
+
+        <div className="admin-layout">
+          <section className="admin-create-panel">
+            <div className="admin-panel-heading">
+              <span className="admin-panel-icon"><UserPlus size={18} /></span>
+              <div><h3>Crear cuenta</h3><p>El acceso se habilita al guardar.</p></div>
+            </div>
+            <div className="admin-security-note">
+              <ShieldCheck size={16} />
+              <span>La cuenta quedará protegida con verificación en dos pasos.</span>
+            </div>
+            <form className="admin-user-form" onSubmit={handleCreate}>
+              <label>Nombre completo
+                <input name="full_name" placeholder="Ej. Camila Vargas" required maxLength="150" autoComplete="name" />
+              </label>
+              <label>Correo institucional
+                <input name="email" type="email" placeholder="nombre@empresa.cl" required autoComplete="email" />
+              </label>
+              <label>Rol
+                <select name="role" required value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)}>
+                  <option value="operador">Operador</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="auditor">Auditor</option>
+                  <option value="admin">Administrador</option>
+                </select>
+                <small className="admin-field-hint">{roleDescriptions[selectedRole]}</small>
+              </label>
+              <label>País
+                <select name="country" required defaultValue="Chile">
+                  <option value="Chile">Chile</option>
+                  <option value="Colombia">Colombia</option>
+                  <option value="Peru">Perú</option>
+                </select>
+              </label>
+              {formError && <div className="form-error" role="alert">{formError}</div>}
+              <button className="primary admin-create-button" type="submit" disabled={saving}>
+                {saving ? 'Creando cuenta…' : 'Crear usuario'} <UserPlus size={16} />
+              </button>
+            </form>
+            {createdCredentials && (
+              <div className="temporary-password admin-created" role="status">
+                <div className="admin-created-heading">
+                  <div><strong>Cuenta creada</strong><span>{createdCredentials.email}</span></div>
+                  <button type="button" className="admin-dismiss" aria-label="Ocultar contraseña temporal" onClick={() => { setCreatedCredentials(null); setCopyError(''); }}><X size={16} /></button>
+                </div>
+                <span>Comparte esta contraseña por un canal seguro. Solo se muestra ahora.</span>
+                <div className="admin-password-row">
+                  <code>{createdCredentials.password}</code>
+                  <button type="button" className="secondary" onClick={handleCopyPassword}>
+                    {copied ? <Check size={15} /> : <Copy size={15} />}
+                    {copied ? 'Copiada' : 'Copiar'}
+                  </button>
+                </div>
+                {copyError ? <small className="admin-copy-error" role="alert">{copyError}</small> : !copied && <small className="admin-copy-hint">Puedes copiarla o seleccionar el texto para compartirla.</small>}
+              </div>
+            )}
+          </section>
+
+          <section className="admin-directory">
+            <div className="admin-directory-heading">
+              <div><h3>Directorio de usuarios</h3><p>Consulta las cuentas y sus niveles de acceso.</p></div>
+              <span className="count-pill">{loading ? '…' : users.length}</span>
+            </div>
+            <div className="admin-directory-tools">
+              <label className="admin-search">
+                <Search size={16} aria-hidden="true" />
+                <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre o correo" aria-label="Buscar usuarios" />
+              </label>
+              <select className="admin-role-filter" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} aria-label="Filtrar por rol">
+                <option value="all">Todos los roles</option>
+                {Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </div>
+            {listError && (
+              <div className="admin-list-error" role="alert">
+                <span>{listError}</span>
+                <button type="button" className="text-button" onClick={() => { setLoading(true); fetchUsers(); }}>Reintentar</button>
+              </div>
+            )}
+            <div className="table-scroll">
+              <table className="admin-users-table">
+                <thead><tr><th>PERSONA</th><th>ROL</th><th>PAÍS</th><th>SEGURIDAD</th></tr></thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan="4" className="empty">Cargando directorio…</td></tr>
+                  ) : filteredUsers.map((account) => {
+                    const name = `${account.first_name} ${account.last_name}`.trim() || account.username;
+                    const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+                    const role = account.profile?.role;
+                    return (
+                      <tr key={account.id}>
+                        <td>
+                          <div className="admin-person">
+                            <span className="admin-person-avatar">{initials}</span>
+                            <span><strong>{name}</strong><small>{account.email}</small></span>
+                          </div>
+                        </td>
+                        <td><span className={`admin-role-badge role-${role || 'none'}`}>{roleLabels[role] || 'Sin rol'}</span></td>
+                        <td>{account.profile?.country || '—'}</td>
+                        <td><span className={`admin-mfa-status ${account.profile?.is_2fa_enabled ? 'enabled' : ''}`}><i />{account.profile?.is_2fa_enabled ? '2FA activo' : '2FA inactivo'}</span></td>
+                      </tr>
+                    );
+                  })}
+                  {!loading && filteredUsers.length === 0 && (
+                    <tr><td colSpan="4" className="admin-empty">
+                      {users.length ? 'No hay cuentas que coincidan con esos filtros.' : 'Aún no hay usuarios. Crea la primera cuenta desde el formulario.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </>
+  );
+}
+
+const ROLE_SCREENS = {
+  operador: ['dashboard', 'detail', 'record-form'],
+  supervisor: ['dashboard', 'detail', 'record-form', 'approvals', 'audit'],
+  auditor: ['dashboard', 'detail', 'audit'],
+  admin: ['dashboard', 'detail', 'approvals', 'audit', 'admin-users'],
+};
+
 function App() {
   const [user, setUser] = useState(() => api.auth.getCurrentUser());
   const [screen, setScreen] = useState('dashboard');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const role = user?.profile?.role || 'operador';
+  const allowedScreens = ROLE_SCREENS[role] || ['dashboard'];
+
+  useEffect(() => {
+    if (!allowedScreens.includes(screen)) setScreen('dashboard');
+  }, [screen, allowedScreens]);
 
   const handleLogout = () => {
     api.auth.logout();
@@ -1162,6 +1537,17 @@ function App() {
           <Detail
             record={selectedRecord}
             setScreen={setScreen}
+            setSelectedRecord={setSelectedRecord}
+            user={user}
+            onLogout={handleLogout}
+          />
+        );
+      case 'record-form':
+        return (
+          <RecordForm
+            record={selectedRecord}
+            setScreen={setScreen}
+            setSelectedRecord={setSelectedRecord}
             user={user}
             onLogout={handleLogout}
           />
@@ -1187,6 +1573,13 @@ function App() {
         return (
           <Audit
             setScreen={setScreen}
+            user={user}
+            onLogout={handleLogout}
+          />
+        );
+      case 'admin-users':
+        return (
+          <AdminUsers
             user={user}
             onLogout={handleLogout}
           />

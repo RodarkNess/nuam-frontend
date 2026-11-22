@@ -1,23 +1,27 @@
-# nuam · Mantenedor de calificaciones tributarias
+# NUAM · Gestión y trazabilidad tributaria
 
-Prototipo funcional de las cinco pantallas del mockup: inicio de sesión con MFA, resumen/búsqueda, detalle de documento, carga masiva y aprobaciones.
+Interfaz web React para el mantenedor tributario; API Django en el proyecto vecino `nuam-backend`. El alcance implementado sigue el MVP de los documentos de propósito y brainstorming: expedientes, búsqueda, integridad documental, aprobaciones, RBAC y auditoría.
 
-## Ejecutar
+## Desarrollo local
 
-```bash
+```powershell
 npm install
 npm run dev
 ```
 
-El acceso demo acepta cualquier correo y contraseña no vacíos. En el segundo paso se puede ingresar cualquier código de seis dígitos.
+La API local usa `http://127.0.0.1:8000/api/v1` por defecto. Para cambiarla, define `VITE_API_BASE_URL` en `.env.local` (consulta `.env.example`). Configura el backend y Supabase en `nuam-backend/.env`; los valores de acceso nunca deben guardarse en Git.
 
-## Seguridad implementada
+El backend se ejecuta con `python manage.py runserver` desde `nuam-backend`. La guía de instalación, variables, migración aditiva y pruebas está en [`nuam-backend/README.md`](../nuam-backend/README.md).
 
-- MFA obligatorio en el flujo de acceso y cierre de sesión desde la navegación.
-- Datos fiscales enmascarados en la interfaz; no se incluyen secretos en el repositorio.
-- RBAC y aislamiento por organización/país preparados en [supabase/schema.sql](./supabase/schema.sql) mediante RLS.
-- Auditoría append-only para lecturas, cambios, descargas, aprobaciones y fallos.
-- Borrado lógico, UUID, restricciones de dominio, índices de búsqueda y hash SHA-256.
-- El límite de carga del mockup se fija en 25 MB; se aceptan `.xlsx`, `.csv` y `.pdf`.
+## Roles
 
-El esquema está preparado para Supabase Auth, Storage privado con URLs firmadas y despliegue en Vercel. Antes de producción deben conectarse el proveedor MFA, análisis antivirus, cálculo/verificación real del hash, políticas de retención y variables de entorno.
+- **Operador:** consulta, crea y modifica expedientes; carga de archivos.
+- **Supervisor:** funciones de operación, aprobaciones, borrado lógico y auditoría.
+- **Auditor:** lectura de expedientes y bitácora.
+- **Administrador:** acceso al panel de usuarios y asignación de roles; solo administradores pueden crear cuentas.
+
+Los permisos se validan en la API; ocultar una opción en la interfaz no sustituye la autorización del servidor.
+
+## Alcance y límites
+
+Los PDF sitúan OCR, integraciones externas, operación multipaís y cargas masivas avanzadas fuera del MVP. La carga masiva está deshabilitada hasta que exista validación real de archivos y filas; no escribe datos ficticios. El envío local de 2FA usa el backend de consola hasta configurar SMTP; para entregar códigos a una bandeja real, configura las variables SMTP descritas en el README del backend.

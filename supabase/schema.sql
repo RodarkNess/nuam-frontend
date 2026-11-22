@@ -1,3 +1,8 @@
+-- Legacy schema draft. The active application uses Django ORM migrations
+-- (tables prefixed tributario_) against Supabase PostgreSQL; do not apply this
+-- draft alongside the Django schema. Its RLS policies do not secure Django API
+-- requests, which are authorized by the backend's JWT/RBAC permissions.
+
 create extension if not exists pgcrypto;
 
 create type app_role as enum ('operador', 'supervisor', 'auditor', 'administrador');
