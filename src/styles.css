@@ -82,7 +82,6 @@
 .admin-role-badge{display:inline-flex;align-items:center;border-radius:20px;padding:6px 10px;font-size:12px;font-weight:600}
 .admin-role-badge.role-operador{background:#eaf2fe;color:#3474be}
 .admin-role-badge.role-supervisor{background:#fff4df;color:#a77925}
-.admin-role-badge.role-auditor{background:#f0ebff;color:#775db1}
 .admin-role-badge.role-admin{background:#e8f7f1;color:#26815f}
 .admin-role-badge.role-none{background:#f0f3f6;color:#75839a}
 .admin-empty{text-align:center;padding:30px 18px;color:var(--muted);font-size:13px}

@@ -24,8 +24,12 @@ function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '', '', '']);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => sessionStorage.getItem('nuam_session_expired') || '');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    sessionStorage.removeItem('nuam_session_expired');
+  }, []);
 
   const handleCredentialsSubmit = async (e) => {
     e.preventDefault();
@@ -245,19 +249,19 @@ function ProfileSetup({ user, onComplete, onLogout }) {
   );
 }
 
-function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 2 }) {
+function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 0 }) {
   const role = user?.profile?.role || 'operador';
   const items = [
     ['dashboard', 'Búsqueda de documentos', Search],
     ...(['supervisor', 'admin'].includes(role) ? [['approvals', 'Bandeja de aprobaciones', FileCheck2]] : []),
-    ...(['supervisor', 'auditor', 'admin'].includes(role) ? [['audit', 'Auditoría y trazabilidad', ShieldCheck]] : []),
+    ...(['supervisor', 'admin'].includes(role) ? [['audit', 'Auditoría y trazabilidad', ShieldCheck]] : []),
+    ...(['operador', 'supervisor'].includes(role) ? [['upload', 'Carga masiva', UploadCloud]] : []),
     ...(role === 'admin' ? [['admin-users', 'Usuarios', UsersRound]] : []),
   ];
 
   const roleLabels = {
     operador: 'Operador tributario',
     supervisor: 'Supervisor tributario',
-    auditor: 'Auditor',
     admin: 'Administrador',
   };
   const roleDisplay = roleLabels[role] || 'Usuario';
@@ -317,7 +321,6 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
   const roleName = {
     operador: 'Operador',
     supervisor: 'Supervisor',
-    auditor: 'Auditor',
     admin: 'Administrador',
   }[user?.profile?.role] || 'Usuario';
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ')
@@ -364,7 +367,7 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
             <div className="popover user-menu">
               <strong>{fullName}</strong>
               <small>{user?.email || user?.username}</small>
-              <button onClick={() => window.alert(`Perfil: ${roleName} - País: ${user?.profile?.country || 'Chile'}`)}>
+              <button onClick={() => window.alert(`Perfil: ${roleName} - Operación Chile / SII`)}>
                 Mi perfil
               </button>
               <button onClick={onLogout}>Cerrar sesión</button>
@@ -383,7 +386,6 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
   const [yearFilter, setYearFilter] = useState('Todos los ejercicios');
   const [emisorFilter, setEmisorFilter] = useState('Todos los emisores');
   const [typeFilter, setTypeFilter] = useState('Todos los documentos');
-  const [countryFilter, setCountryFilter] = useState('Todos los países');
   const [statusTab, setStatusTab] = useState('Todos');
 
   const fetchRecords = async () => {
@@ -394,7 +396,6 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
         year: yearFilter,
         emisor: emisorFilter,
         doc_type: typeFilter,
-        country: countryFilter,
         status: statusTab,
       });
       setRecords(data);
@@ -407,7 +408,7 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
 
   useEffect(() => {
     fetchRecords();
-  }, [query, yearFilter, emisorFilter, typeFilter, countryFilter, statusTab]);
+  }, [query, yearFilter, emisorFilter, typeFilter, statusTab]);
 
   const handleDownloadPdf = async (e, rec) => {
     e.stopPropagation();
@@ -484,13 +485,6 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
               <option value="Declaración jurada">Declaración jurada</option>
             </select>
 
-            <select className="filter-select" value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-              <option value="Todos los países">Todos los países</option>
-              <option value="Chile">Chile</option>
-              <option value="Colombia">Colombia</option>
-              <option value="Peru">Perú</option>
-            </select>
-
             <button
               className="text-button"
               style={{ fontSize: '11px' }}
@@ -499,7 +493,6 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
                 setYearFilter('Todos los ejercicios');
                 setEmisorFilter('Todos los emisores');
                 setTypeFilter('Todos los documentos');
-                setCountryFilter('Todos los países');
                 setStatusTab('Todos');
               }}
             >
@@ -682,7 +675,6 @@ function Detail({ record, setScreen, setSelectedRecord, user, onLogout }) {
                 <div className="detail-field"><span>RUT contribuyente</span><strong>{rec?.rut}</strong></div>
                 <div className="detail-field"><span>Titular / Emisor</span><strong>{rec?.company_name}</strong></div>
                 <div className="detail-field"><span>Ejercicio</span><strong>{rec?.year}</strong></div>
-                <div className="detail-field"><span>País</span><strong>{rec?.country}</strong></div>
                 <div className="detail-field"><span>Tipo de documento</span><strong>{rec?.doc_type}</strong></div>
                 <div className="detail-field"><span>Monto calificado</span><strong>{rec?.formatted_amount || `${rec?.currency} ${rec?.amount}`}</strong></div>
               </div>
@@ -824,11 +816,6 @@ function RecordForm({ record, setScreen, setSelectedRecord, user, onLogout }) {
             <label>RUT<input name="rut" required maxLength="25" defaultValue={record?.rut || ''} /></label>
             <label>Contribuyente / emisor<input name="company_name" required maxLength="200" defaultValue={record?.company_name || ''} /></label>
             <label>Ejercicio<input name="year" type="number" min="2000" max="2100" required defaultValue={record?.year || new Date().getFullYear()} /></label>
-            <label>País
-              <select name="country" required defaultValue={record?.country || 'Chile'}>
-                <option value="Chile">Chile</option><option value="Colombia">Colombia</option><option value="Peru">Perú</option>
-              </select>
-            </label>
             <label>Tipo de documento<input name="doc_type" required maxLength="100" defaultValue={record?.doc_type || 'Certificado tributario'} /></label>
             <label>Monto<input name="amount" type="number" step="0.01" min="0" defaultValue={record?.amount || ''} /></label>
             <label>Moneda<input name="currency" required maxLength="10" defaultValue={record?.currency || 'CLP'} /></label>
@@ -869,6 +856,15 @@ function Upload({ setScreen, user, onLogout }) {
 
   const handleValidate = async () => {
     if (!file) return;
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!['xlsx', 'csv'].includes(extension)) {
+      alert('Solo se permiten archivos .xlsx o .csv.');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      alert('El archivo no puede superar 25 MB.');
+      return;
+    }
     setValidating(true);
     try {
       const res = await api.bulkUpload.validate(file);
@@ -882,8 +878,10 @@ function Upload({ setScreen, user, onLogout }) {
 
   const handleConfirm = async () => {
     try {
-      const res = await api.bulkUpload.confirm(file?.name || 'certificados_chile_2025.xlsx');
-      setConfirmedMessage(res.detail || 'Carga masiva procesada exitosamente.');
+      const res = await api.bulkUpload.confirm(validationResult?.batch_id);
+      setConfirmedMessage(
+        `Carga masiva confirmada: ${res.created} registro(s) creado(s) de ${res.valid_rows} fila(s) válida(s).`
+      );
       setTimeout(() => setScreen('dashboard'), 1500);
     } catch (err) {
       alert(err.message);
@@ -919,7 +917,7 @@ function Upload({ setScreen, user, onLogout }) {
             >
               <input
                 type="file"
-                accept=".csv,.xlsx,.pdf"
+                accept=".csv,.xlsx"
                 onChange={(e) => {
                   if (e.target.files?.[0]) {
                     setFile(e.target.files[0]);
@@ -941,7 +939,7 @@ function Upload({ setScreen, user, onLogout }) {
                   <div className="upload-icon"><CloudUpload size={25} /></div>
                   <h3>Arrastra tu archivo aquí</h3>
                   <p>o <strong>selecciona desde tu equipo</strong></p>
-                  <small>Formatos permitidos: .XLSX, .CSV, .PDF · Máximo 25 MB</small>
+                  <small>Formatos permitidos: .XLSX, .CSV · Máximo 25 MB</small>
                 </>
               )}
             </div>
@@ -1013,8 +1011,6 @@ function Upload({ setScreen, user, onLogout }) {
               <thead>
                 <tr>
                   <th>Fila</th>
-                  <th>Campo</th>
-                  <th>Valor recibido</th>
                   <th>Error detectado</th>
                   <th>Estado</th>
                 </tr>
@@ -1023,10 +1019,10 @@ function Upload({ setScreen, user, onLogout }) {
                 {validationResult.errors?.map((err, idx) => (
                   <tr key={idx}>
                     <td><strong>{err.row}</strong></td>
-                    <td>{err.field}</td>
-                    <td><code>{err.value}</code></td>
-                    <td style={{ color: '#c0392b' }}>{err.error}</td>
-                    <td><span className="badge neutral" style={{ color: '#d9534f' }}>• {err.status}</span></td>
+                    <td style={{ color: '#c0392b' }}>
+                      {Array.isArray(err.errors) ? err.errors.join('; ') : (err.error || 'Error de validación')}
+                    </td>
+                    <td><span className="badge neutral" style={{ color: '#d9534f' }}>• Con error</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -1039,6 +1035,7 @@ function Upload({ setScreen, user, onLogout }) {
               <button
                 className="primary"
                 onClick={handleConfirm}
+                disabled={!validationResult?.batch_id || validationResult.valid_rows === 0}
               >
                 Confirmar carga de filas válidas
               </button>
@@ -1055,7 +1052,7 @@ function Upload({ setScreen, user, onLogout }) {
   );
 }
 
-function Approvals({ setScreen, setSelectedRecord, user, onLogout }) {
+function Approvals({ setScreen, setSelectedRecord, user, onLogout, onResolved }) {
   const [approvals, setApprovals] = useState([]);
   const [selectedApproval, setSelectedApproval] = useState(null);
   const [comment, setComment] = useState('');
@@ -1093,6 +1090,7 @@ function Approvals({ setScreen, setSelectedRecord, user, onLogout }) {
       alert(`${res.detail}`);
       setComment('');
       fetchApprovals();
+      onResolved?.();
     } catch (err) {
       alert(err.message);
     } finally {
@@ -1261,6 +1259,30 @@ function Audit({ setScreen, user, onLogout }) {
       .finally(() => setLoading(false));
   }, []);
 
+  const exportCsv = () => {
+    const escapeCsv = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const rows = [
+      ['Fecha y hora', 'Acción realizada', 'Usuario responsable', 'Resultado', 'Dirección IP'],
+      ...logs.map((log) => [
+        log.formatted_date || log.timestamp,
+        log.action,
+        log.user_name,
+        log.result,
+        log.ip_address,
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `auditoria-nuam-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <Header
@@ -1275,7 +1297,7 @@ function Audit({ setScreen, user, onLogout }) {
             <span className="eyebrow dark">LOG INMUTABLE</span>
             <h2>Bitácora de seguridad y auditoría</h2>
           </div>
-          <button className="secondary" onClick={() => window.print()}>
+          <button className="secondary" onClick={exportCsv} disabled={loading || logs.length === 0}>
             <Download size={15} /> Exportar bitácora
           </button>
         </div>
@@ -1352,13 +1374,11 @@ function AdminUsers({ user, onLogout }) {
   const roleLabels = {
     operador: 'Operador',
     supervisor: 'Supervisor',
-    auditor: 'Auditor',
     admin: 'Administrador',
   };
   const roleDescriptions = {
     operador: 'Puede buscar documentos y registrar o editar expedientes.',
     supervisor: 'Puede gestionar expedientes, resolver aprobaciones y consultar auditoría.',
-    auditor: 'Puede consultar documentos e historial, pero no editar.',
     admin: 'Puede revisar documentos, resolver aprobaciones, consultar auditoría y administrar usuarios.',
   };
   const filteredUsers = useMemo(() => {
@@ -1380,7 +1400,9 @@ function AdminUsers({ user, onLogout }) {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     try {
-      const result = await api.admin.createUser(Object.fromEntries(form.entries()));
+      const payload = Object.fromEntries(form.entries());
+      payload.country = 'Chile';
+      const result = await api.admin.createUser(payload);
       setUsers((current) => [result.user, ...current]);
       setCreatedCredentials({ email: result.user.email, password: result.temporary_password });
       formElement.reset();
@@ -1400,6 +1422,15 @@ function AdminUsers({ user, onLogout }) {
     } catch {
       setCopied(false);
       setCopyError('No se pudo copiar. Selecciona la contraseña para copiarla manualmente.');
+    }
+  };
+
+  const handleUserUpdate = async (account, changes) => {
+    try {
+      const updated = await api.admin.updateUser(account.id, changes);
+      setUsers((current) => current.map((item) => item.id === account.id ? updated : item));
+    } catch (err) {
+      setListError(err.message);
     }
   };
 
@@ -1440,17 +1471,9 @@ function AdminUsers({ user, onLogout }) {
                 <select name="role" required value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)}>
                   <option value="operador">Operador</option>
                   <option value="supervisor">Supervisor</option>
-                  <option value="auditor">Auditor</option>
                   <option value="admin">Administrador</option>
                 </select>
                 <small className="admin-field-hint">{roleDescriptions[selectedRole]}</small>
-              </label>
-              <label>País de trabajo
-                <select name="country" required defaultValue="Chile">
-                  <option value="Chile">Chile</option>
-                  <option value="Colombia">Colombia</option>
-                  <option value="Peru">Perú</option>
-                </select>
               </label>
               {formError && <div className="form-error" role="alert">{formError}</div>}
               <button className="primary admin-create-button" type="submit" disabled={saving}>
@@ -1495,10 +1518,10 @@ function AdminUsers({ user, onLogout }) {
             )}
             <div className="table-scroll">
               <table className="admin-users-table">
-                <thead><tr><th>PERSONA</th><th>PERMISOS</th></tr></thead>
+                <thead><tr><th>PERSONA</th><th>PERMISOS</th><th>ACCIONES</th></tr></thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan="2" className="empty">Cargando usuarios…</td></tr>
+                    <tr><td colSpan="3" className="empty">Cargando usuarios…</td></tr>
                   ) : filteredUsers.map((account) => {
                     const name = `${account.first_name} ${account.last_name}`.trim() || account.username;
                     const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
@@ -1511,12 +1534,32 @@ function AdminUsers({ user, onLogout }) {
                             <span><strong>{name}</strong><small>{account.email}</small></span>
                           </div>
                         </td>
-                        <td><span className={`admin-role-badge role-${role || 'none'}`}>{roleLabels[role] || 'Sin rol'}</span></td>
+                        <td>
+                          <select
+                            className="admin-role-select"
+                            value={role || 'operador'}
+                            aria-label={`Cambiar rol de ${name}`}
+                            onChange={(event) => handleUserUpdate(account, { role: event.target.value })}
+                          >
+                            <option value="operador">Operador</option>
+                            <option value="supervisor">Supervisor</option>
+                            <option value="admin">Administrador</option>
+                          </select>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className={account.is_active === false ? 'secondary' : 'reject'}
+                            onClick={() => handleUserUpdate(account, { is_active: account.is_active === false })}
+                          >
+                            {account.is_active === false ? 'Activar cuenta' : 'Desactivar cuenta'}
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
                   {!loading && filteredUsers.length === 0 && (
-                    <tr><td colSpan="2" className="admin-empty">
+                    <tr><td colSpan="3" className="admin-empty">
                       {users.length ? 'No encontramos usuarios con ese nombre o correo.' : 'Aún no hay usuarios. Crea la primera cuenta con el formulario.'}
                     </td></tr>
                   )}
@@ -1531,9 +1574,8 @@ function AdminUsers({ user, onLogout }) {
 }
 
 const ROLE_SCREENS = {
-  operador: ['dashboard', 'detail', 'record-form'],
-  supervisor: ['dashboard', 'detail', 'record-form', 'approvals', 'audit'],
-  auditor: ['dashboard', 'detail', 'audit'],
+  operador: ['dashboard', 'detail', 'record-form', 'upload'],
+  supervisor: ['dashboard', 'detail', 'record-form', 'upload', 'approvals', 'audit'],
   admin: ['dashboard', 'detail', 'approvals', 'audit', 'admin-users'],
 };
 
@@ -1542,12 +1584,27 @@ function App() {
   const [screen, setScreen] = useState('dashboard');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const role = user?.profile?.role || 'operador';
   const allowedScreens = ROLE_SCREENS[role] || ['dashboard'];
 
   useEffect(() => {
     if (!allowedScreens.includes(screen)) setScreen('dashboard');
   }, [screen, allowedScreens]);
+
+  const refreshDashboardStats = async () => {
+    if (!user) return;
+    try {
+      const stats = await api.taxRecords.getStats();
+      setPendingApprovals(stats.pending_approvals ?? 0);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    refreshDashboardStats();
+  }, [user]);
 
   const handleLogout = () => {
     api.auth.logout();
@@ -1609,6 +1666,7 @@ function App() {
             setSelectedRecord={setSelectedRecord}
             user={user}
             onLogout={handleLogout}
+            onResolved={refreshDashboardStats}
           />
         );
       case 'audit':
@@ -1649,6 +1707,7 @@ function App() {
           }}
           onLogout={handleLogout}
           user={user}
+          pendingApprovalsCount={pendingApprovals}
         />
       </div>
       {mobileNav && <button className="nav-overlay" onClick={() => setMobileNav(false)} />}
