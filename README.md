@@ -15,7 +15,7 @@ El backend se ejecuta con `python manage.py runserver` desde `nuam-backend`. La 
 
 ## Despliegue en Vercel
 
-El frontend usa `VITE_API_BASE_URL` cuando está configurada. En producción sin esa variable usa el proxy `/api/v1` incluido en `api/v1/[...path].js`.
+El frontend usa `VITE_API_BASE_URL` cuando está configurada. En producción sin esa variable usa `https://nuam-backend-t5z9.vercel.app/api/v1` directamente. El proxy `api/v1/[...path].js` permanece disponible si se configura `NUAM_BACKEND_URL`.
 
 Configura estas variables en Vercel:
 

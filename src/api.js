@@ -1,10 +1,11 @@
 const configuredApiUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const configuredUrlIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(configuredApiUrl || '');
+const productionApiUrl = 'https://nuam-backend-t5z9.vercel.app/api/v1';
 const API_BASE_URL = (
   (configuredApiUrl && (!configuredUrlIsLocal || isLocalHost))
     ? configuredApiUrl
-    : (isLocalHost ? 'http://127.0.0.1:8000/api/v1' : '/api/v1')
+    : (isLocalHost ? 'http://127.0.0.1:8000/api/v1' : productionApiUrl)
 ).replace(/\/$/, '');
 
 async function handleApiResponse(res, fallbackMessage) {
