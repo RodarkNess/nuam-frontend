@@ -1,6 +1,8 @@
-# NUAM · Gestión y trazabilidad tributaria
+# NUAM · Versión 1.0
 
-Interfaz web React para el mantenedor tributario; API Django en el proyecto vecino `nuam-backend`. El alcance implementado sigue el MVP de los documentos de propósito y brainstorming: expedientes, búsqueda, integridad documental, aprobaciones, RBAC y auditoría.
+Interfaz web React para el mantenedor tributario de NUAM en Operación Chile / SII. El frontend consume la API Django de `nuam-backend` y administra expedientes, integridad documental, aprobaciones, auditoría y usuarios.
+
+El esquema de datos lo gestionan las migraciones de Django en `nuam-backend`; este repositorio no contiene ni requiere un esquema SQL separado.
 
 ## Desarrollo local
 
@@ -9,32 +11,54 @@ npm install
 npm run dev
 ```
 
-La API local usa `http://127.0.0.1:8000/api/v1` por defecto. Para cambiarla, define `VITE_API_BASE_URL` en `.env.local` (consulta `.env.example`). Configura el backend y Supabase en `nuam-backend/.env`; los valores de acceso nunca deben guardarse en Git.
+La API local usa `http://127.0.0.1:8000/api/v1` por defecto. Para usar otra URL, define `VITE_API_BASE_URL` en `.env.local` según `.env.example`.
 
-El backend se ejecuta con `python manage.py runserver` desde `nuam-backend`. La guía de instalación, variables, migración aditiva y pruebas está en [`nuam-backend/README.md`](../nuam-backend/README.md).
+Inicia Django desde `nuam-backend`:
+
+```powershell
+python manage.py migrate
+python manage.py runserver
+```
+
+La configuración de variables, Supabase, Storage y migraciones se describe en [`nuam-backend/README.md`](../nuam-backend/README.md). Las credenciales privadas nunca deben guardarse en Git.
+
+## Funcionalidades de la versión 1.0
+
+- Autenticación JWT y verificación en dos pasos.
+- CRUD completo de expedientes tributarios con borrado lógico.
+- Búsqueda por RUT, folio, emisor, año, tipo y estado.
+- Carga masiva habilitada desde archivos `.xlsx` y `.csv`, con límite de 25 MB, vista previa de errores y confirmación en base de datos.
+- Carga y descarga de PDF de hasta 25 MB con verificación SHA-256.
+- Bandeja de aprobaciones con decisión, comentario obligatorio y actualización del expediente.
+- Bitácora de auditoría con exportación real a CSV.
+- Administración de cuentas, roles y estado activo.
 
 ## Despliegue en Vercel
 
-El frontend usa `VITE_API_BASE_URL` cuando está configurada. En producción sin esa variable usa `https://nuam-backend-t5z9.vercel.app/api/v1` directamente. El proxy `api/v1/[...path].js` permanece disponible si se configura `NUAM_BACKEND_URL`.
+En producción, el frontend puede usar el proxy `api/v1/[...path].js` o conectarse directamente al backend.
 
-Configura estas variables en Vercel:
+Configura estas variables en el proyecto de Vercel del frontend:
 
-- `NUAM_BACKEND_URL`: URL pública del backend Django, por ejemplo `https://tu-backend.onrender.com` o el dominio equivalente.
+- `NUAM_BACKEND_URL`: URL pública del backend Django.
+- Opcional: `VITE_API_BASE_URL`: URL directa del backend, incluyendo `/api/v1`.
 
-La instancia actual está configurada como respaldo en `https://nuam-backend-t5z9.vercel.app`.
-- Opcional: `VITE_API_BASE_URL`: URL directa del backend incluyendo `/api/v1`. Si se define, el navegador se conectará directamente y el backend deberá permitir el dominio de Vercel mediante CORS.
+Ejemplo:
 
-No uses una URL de Supabase como `VITE_API_BASE_URL`; Supabase almacena la base de datos, pero no reemplaza automáticamente los endpoints Django de `/api/v1`.
+```text
+NUAM_BACKEND_URL=https://tu-backend.vercel.app
+VITE_API_BASE_URL=https://tu-backend.vercel.app/api/v1
+```
+
+No uses una URL de Supabase como `VITE_API_BASE_URL`; Django expone todos los endpoints de `/api/v1`.
 
 ## Roles
 
-- **Operador:** consulta, crea y modifica expedientes; carga de archivos.
-- **Supervisor:** funciones de operación, aprobaciones, borrado lógico y auditoría.
-- **Auditor:** lectura de expedientes y bitácora.
-- **Administrador:** acceso al panel de usuarios y asignación de roles; solo administradores pueden crear cuentas.
+- **admin:** administra usuarios, roles y cuentas.
+- **operador:** consulta, crea y modifica expedientes y participa en cargas masivas.
+- **supervisor:** gestiona expedientes, resuelve aprobaciones y consulta la auditoría.
 
-Los permisos se validan en la API; ocultar una opción en la interfaz no sustituye la autorización del servidor.
+Los permisos se verifican en el backend. Ocultar una opción en la interfaz no sustituye la autorización del servidor.
 
-## Alcance y límites
+## Operación Chile / SII
 
-Los PDF sitúan OCR, integraciones externas, operación multipaís y cargas masivas avanzadas fuera del MVP. La carga masiva está deshabilitada hasta que exista validación real de archivos y filas; no escribe datos ficticios. El envío local de 2FA usa el backend de consola hasta configurar SMTP; para entregar códigos a una bandeja real, configura las variables SMTP descritas en el README del backend.
+La aplicación usa como contexto exclusivo Chile y mantiene trazabilidad completa de registros, aprobaciones, descargas y cambios. Los documentos originales se conservan y su integridad se verifica mediante SHA-256.
