@@ -9,6 +9,24 @@ import {
 import { api } from './api';
 import './styles.css';
 
+function isValidChileanRut(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.trim().match(/^(\d{1,3}(?:\.?\d{3}){1,2}|\d{7,8})-?([\dkK])$/);
+  if (!match) return false;
+  const body = match[1].replace(/\./g, '');
+  const dv = match[2].toUpperCase();
+  const num = Number(body);
+  if (!Number.isInteger(num) || num < 1000000 || num > 99999999) return false;
+  const factors = [2, 3, 4, 5, 6, 7];
+  let sum = 0;
+  for (let i = body.length - 1, f = 0; i >= 0; i -= 1, f += 1) {
+    sum += Number(body[i]) * factors[f % 6];
+  }
+  const rem = 11 - (sum % 11);
+  const expected = rem === 11 ? '0' : rem === 10 ? 'K' : String(rem);
+  return expected === dv;
+}
+
 function Logo({ light = false }) {
   return (
     <div className={`logo ${light ? 'logo-light' : ''}`}>
@@ -253,8 +271,8 @@ function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 0 
   const role = user?.profile?.role || 'operador';
   const items = [
     ['dashboard', 'Búsqueda de documentos', Search],
-    ...(['supervisor', 'admin'].includes(role) ? [['approvals', 'Bandeja de aprobaciones', FileCheck2]] : []),
-    ...(['supervisor', 'admin'].includes(role) ? [['audit', 'Auditoría y trazabilidad', ShieldCheck]] : []),
+    ...(['supervisor', 'auditor', 'admin'].includes(role) ? [['approvals', 'Bandeja de aprobaciones', FileCheck2]] : []),
+    ...(['supervisor', 'auditor', 'admin'].includes(role) ? [['audit', 'Auditoría y trazabilidad', ShieldCheck]] : []),
     ...(['operador', 'supervisor'].includes(role) ? [['upload', 'Carga masiva', UploadCloud]] : []),
     ...(role === 'admin' ? [['admin-users', 'Usuarios', UsersRound]] : []),
   ];
@@ -262,6 +280,7 @@ function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 0 
   const roleLabels = {
     operador: 'Operador tributario',
     supervisor: 'Supervisor tributario',
+    auditor: 'Auditor (Solo lectura)',
     admin: 'Administrador',
   };
   const roleDisplay = roleLabels[role] || 'Usuario';
@@ -271,7 +290,7 @@ function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 0 
     <aside className="sidebar">
       <div className="sidebar-top">
         <Logo />
-        <button className="icon-btn menu-btn"><Menu size={19} /></button>
+        <button className="icon-btn menu-btn" aria-label="Alternar menú lateral"><Menu size={19} /></button>
       </div>
 
       <div className="workspace">
@@ -321,6 +340,7 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
   const roleName = {
     operador: 'Operador',
     supervisor: 'Supervisor',
+    auditor: 'Auditor',
     admin: 'Administrador',
   }[user?.profile?.role] || 'Usuario';
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ')
@@ -329,7 +349,7 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
 
   return (
     <header className="topbar">
-      <button className="mobile-menu icon-btn" onClick={onMenu}><Menu size={20} /></button>
+      <button className="mobile-menu icon-btn" aria-label="Abrir menú de navegación" onClick={onMenu}><Menu size={20} /></button>
       <div>
         <h1>{title}</h1>
         <p>{subtitle}</p>
@@ -381,6 +401,9 @@ function Header({ title, subtitle, onMenu, user, onLogout }) {
 
 function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
   const [records, setRecords] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [yearFilter, setYearFilter] = useState('Todos los ejercicios');
@@ -388,17 +411,21 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
   const [typeFilter, setTypeFilter] = useState('Todos los documentos');
   const [statusTab, setStatusTab] = useState('Todos');
 
-  const fetchRecords = async () => {
+  const fetchRecords = async (targetPage = page) => {
     setLoading(true);
     try {
-      const data = await api.taxRecords.getAll({
+      const data = await api.taxRecords.getPaginated({
         search: query,
         year: yearFilter,
         emisor: emisorFilter,
         doc_type: typeFilter,
         status: statusTab,
+        page: targetPage,
       });
-      setRecords(data);
+      setRecords(data.results);
+      setTotalCount(data.count);
+      setPage(data.page);
+      setTotalPages(data.total_pages);
     } catch (err) {
       console.error(err);
     } finally {
@@ -407,8 +434,8 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
   };
 
   useEffect(() => {
-    fetchRecords();
-  }, [query, yearFilter, emisorFilter, typeFilter, statusTab]);
+    fetchRecords(page);
+  }, [query, yearFilter, emisorFilter, typeFilter, statusTab, page]);
 
   const handleDownloadPdf = async (e, rec) => {
     e.stopPropagation();
@@ -451,27 +478,28 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
             <div className="searchbox" style={{ flex: 1, width: 'auto' }}>
               <Search size={18} />
               <input
+                aria-label="Buscar expedientes tributarios"
                 placeholder="Buscar por RUT, nombre, folio o contenido..."
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => { setPage(1); setQuery(e.target.value); }}
               />
             </div>
-            <button className="primary" onClick={fetchRecords}>Buscar</button>
+            <button className="primary" onClick={() => fetchRecords(1)}>Buscar</button>
           </div>
-          <small style={{ color: '#75839a', marginTop: '8px', display: 'block', fontSize: '11px' }}>
+          <small style={{ color: '#4f6078', marginTop: '8px', display: 'block', fontSize: '11px' }}>
             Búsqueda inteligente · Puedes combinar RUT, nombre, folio o contenido del documento.
           </small>
 
           {/* Filtros Dropdown */}
           <div className="filter-dropdowns">
-            <select className="filter-select" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+            <select aria-label="Filtrar por ejercicio" className="filter-select" value={yearFilter} onChange={(e) => { setPage(1); setYearFilter(e.target.value); }}>
               <option value="Todos los ejercicios">Todos los ejercicios</option>
               <option value="2025">2025</option>
               <option value="2024">2024</option>
               <option value="2023">2023</option>
             </select>
 
-            <select className="filter-select" value={emisorFilter} onChange={(e) => setEmisorFilter(e.target.value)}>
+            <select aria-label="Filtrar por emisor" className="filter-select" value={emisorFilter} onChange={(e) => { setPage(1); setEmisorFilter(e.target.value); }}>
               <option value="Todos los emisores">Todos los emisores</option>
               <option value="Inversiones Andinas">Inversiones Andinas S.A.</option>
               <option value="Servicios del Pacífico">Servicios del Pacífico SpA</option>
@@ -479,7 +507,7 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
               <option value="Inversiones Cordillera">Inversiones Cordillera S.A.</option>
             </select>
 
-            <select className="filter-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <select aria-label="Filtrar por tipo de documento" className="filter-select" value={typeFilter} onChange={(e) => { setPage(1); setTypeFilter(e.target.value); }}>
               <option value="Todos los documentos">Todos los documentos</option>
               <option value="Certificado tributario">Certificado tributario</option>
               <option value="Declaración jurada">Declaración jurada</option>
@@ -489,6 +517,7 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
               className="text-button"
               style={{ fontSize: '11px' }}
               onClick={() => {
+                setPage(1);
                 setQuery('');
                 setYearFilter('Todos los ejercicios');
                 setEmisorFilter('Todos los emisores');
@@ -504,13 +533,13 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
         {/* Tabla de Resultados */}
         <div className="table-card" style={{ marginTop: '24px' }}>
           <div className="table-toolbar">
-            <strong>Resultados encontrados · {records.length}</strong>
+            <strong>Resultados encontrados · {totalCount}</strong>
             <div className="filter-tabs">
               {['Todos', 'Pendiente de aprobación', 'Validado', 'Observado'].map((tab) => (
                 <button
                   key={tab}
                   className={statusTab === tab ? 'selected' : ''}
-                  onClick={() => setStatusTab(tab)}
+                  onClick={() => { setPage(1); setStatusTab(tab); }}
                 >
                   {tab}
                 </button>
@@ -577,6 +606,19 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 17px', borderTop: '1px solid var(--line)', fontSize: '11px' }}>
+              <span>Página {page} de {totalPages}</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="secondary" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  <ArrowLeft size={13} /> Anterior
+                </button>
+                <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                  Siguiente <ArrowRight size={13} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
@@ -620,7 +662,7 @@ function Detail({ record, setScreen, setSelectedRecord, user, onLogout }) {
     <>
       <Header
         title="Expediente tributario"
-        subtitle={`${rec?.company_name || 'Inversiones Andinas S.A.'} · RUT ${rec?.rut || '76.543.210-8'} · ${rec?.folio || 'CERT-2025-0148'}`}
+        subtitle={`${rec?.company_name || 'Inversiones Andinas S.A.'} · RUT ${rec?.rut || '76.543.210-3'} · ${rec?.folio || 'CERT-2025-0148'}`}
         user={user}
         onLogout={onLogout}
       />
@@ -775,7 +817,18 @@ function RecordForm({ record, setScreen, setSelectedRecord, user, onLogout }) {
     setSaving(true);
     setError('');
     const formData = new FormData(event.currentTarget);
+    const rutValue = String(formData.get('rut') || '').trim();
+    if (!isValidChileanRut(rutValue)) {
+      setError('El RUT ingresado no es válido según el algoritmo Módulo 11 (verifica el dígito verificador).');
+      setSaving(false);
+      return;
+    }
     if (formData.get('amount') === '') formData.delete('amount');
+    else if (Number(formData.get('amount')) < 0) {
+      setError('El monto financiero no puede ser negativo.');
+      setSaving(false);
+      return;
+    }
     const file = formData.get('document_file');
     if (!file?.size) formData.delete('document_file');
     if (file?.size > 25 * 1024 * 1024) {
@@ -983,7 +1036,9 @@ function Upload({ setScreen, user, onLogout }) {
                   Filas leídas: {validationResult.total_rows} | Válidas: {validationResult.valid_rows} | Con error: {validationResult.error_rows}
                 </p>
               </div>
-              <span className="badge warning"><i /> {validationResult.error_rows} errores detectados</span>
+              <span className={`badge ${validationResult.error_rows > 0 ? 'warning' : 'success'}`}>
+                <i /> {validationResult.error_rows > 0 ? `${validationResult.error_rows} errores detectados` : 'Validado sin errores'}
+              </span>
             </div>
 
             <div className="semaforo-grid">
@@ -992,7 +1047,7 @@ function Upload({ setScreen, user, onLogout }) {
                 <span>Filas Válidas</span>
               </div>
               <div className="semaforo-card warning">
-                <strong>{validationResult.warning_rows}</strong>
+                <strong>{validationResult.warning_rows ?? 0}</strong>
                 <span>Advertencias</span>
               </div>
               <div className="semaforo-card error">
@@ -1001,32 +1056,41 @@ function Upload({ setScreen, user, onLogout }) {
               </div>
             </div>
 
-            <div style={{ background: '#fff4f4', padding: '12px', borderRadius: '6px', color: '#c0392b', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <AlertTriangle size={16} />
-              <span>{validationResult.message}</span>
-            </div>
+            {validationResult.error_rows > 0 ? (
+              <>
+                <div style={{ background: '#fff4f4', padding: '12px', borderRadius: '6px', color: '#a83226', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertTriangle size={16} />
+                  <span>{validationResult.message || `Se detectaron ${validationResult.error_rows} fila(s) con inconsistencias.`}</span>
+                </div>
 
-            <h4 style={{ margin: '18px 0 8px', fontSize: '12px' }}>Errores de validación detectados</h4>
-            <table className="error-table">
-              <thead>
-                <tr>
-                  <th>Fila</th>
-                  <th>Error detectado</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {validationResult.errors?.map((err, idx) => (
-                  <tr key={idx}>
-                    <td><strong>{err.row}</strong></td>
-                    <td style={{ color: '#c0392b' }}>
-                      {Array.isArray(err.errors) ? err.errors.join('; ') : (err.error || 'Error de validación')}
-                    </td>
-                    <td><span className="badge neutral" style={{ color: '#d9534f' }}>• Con error</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                <h4 style={{ margin: '18px 0 8px', fontSize: '12px' }}>Errores de validación detectados</h4>
+                <table className="error-table">
+                  <thead>
+                    <tr>
+                      <th>Fila</th>
+                      <th>Error detectado</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {validationResult.errors?.map((err, idx) => (
+                      <tr key={idx}>
+                        <td><strong>{err.row}</strong></td>
+                        <td style={{ color: '#a83226' }}>
+                          {Array.isArray(err.errors) ? err.errors.join('; ') : (err.error || 'Error de validación')}
+                        </td>
+                        <td><span className="badge neutral" style={{ color: '#a83226' }}>• Con error</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            ) : (
+              <div style={{ background: '#e8f7f1', padding: '12px', borderRadius: '6px', color: '#1b6e53', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Check size={16} />
+                <span>{validationResult.message || 'Todas las filas superaron la validación de estructura, montos y RUT (Módulo 11).'}</span>
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
               <button className="secondary" onClick={() => { setFile(null); setValidationResult(null); }}>
@@ -1374,11 +1438,13 @@ function AdminUsers({ user, onLogout }) {
   const roleLabels = {
     operador: 'Operador',
     supervisor: 'Supervisor',
+    auditor: 'Auditor',
     admin: 'Administrador',
   };
   const roleDescriptions = {
     operador: 'Puede buscar documentos y registrar o editar expedientes.',
     supervisor: 'Puede gestionar expedientes, resolver aprobaciones y consultar auditoría.',
+    auditor: 'Acceso exclusivo en modo lectura a expedientes, aprobaciones y bitácora de auditoría.',
     admin: 'Puede revisar documentos, resolver aprobaciones, consultar auditoría y administrar usuarios.',
   };
   const filteredUsers = useMemo(() => {
@@ -1471,6 +1537,7 @@ function AdminUsers({ user, onLogout }) {
                 <select name="role" required value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)}>
                   <option value="operador">Operador</option>
                   <option value="supervisor">Supervisor</option>
+                  <option value="auditor">Auditor (Solo lectura)</option>
                   <option value="admin">Administrador</option>
                 </select>
                 <small className="admin-field-hint">{roleDescriptions[selectedRole]}</small>
@@ -1543,6 +1610,7 @@ function AdminUsers({ user, onLogout }) {
                           >
                             <option value="operador">Operador</option>
                             <option value="supervisor">Supervisor</option>
+                            <option value="auditor">Auditor</option>
                             <option value="admin">Administrador</option>
                           </select>
                         </td>
@@ -1576,6 +1644,7 @@ function AdminUsers({ user, onLogout }) {
 const ROLE_SCREENS = {
   operador: ['dashboard', 'detail', 'record-form', 'upload'],
   supervisor: ['dashboard', 'detail', 'record-form', 'upload', 'approvals', 'audit'],
+  auditor: ['dashboard', 'detail', 'approvals', 'audit'],
   admin: ['dashboard', 'detail', 'approvals', 'audit', 'admin-users'],
 };
 
@@ -1710,7 +1779,7 @@ function App() {
           pendingApprovalsCount={pendingApprovals}
         />
       </div>
-      {mobileNav && <button className="nav-overlay" onClick={() => setMobileNav(false)} />}
+      {mobileNav && <button className="nav-overlay" aria-label="Cerrar menú lateral" onClick={() => setMobileNav(false)} />}
       <main className="main-content">
         {renderContent()}
       </main>

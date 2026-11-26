@@ -129,17 +129,42 @@ export const api = {
     },
 
     async getAll(params = {}) {
+      const data = await this.getPaginated(params);
+      return data.results;
+    },
+
+    async getPaginated(params = {}) {
       const query = new URLSearchParams();
       if (params.search) query.append('search', params.search);
       if (params.year && params.year !== 'Todos los ejercicios' && params.year !== 'Todos') query.append('year', params.year);
       if (params.emisor && params.emisor !== 'Todos los emisores' && params.emisor !== 'Todos') query.append('emisor', params.emisor);
       if (params.doc_type && params.doc_type !== 'Todos los documentos' && params.doc_type !== 'Todos') query.append('doc_type', params.doc_type);
       if (params.status && params.status !== 'Todos') query.append('status', params.status);
+      if (params.page) query.append('page', String(params.page));
+      if (params.page_size) query.append('page_size', String(params.page_size));
 
       const res = await fetch(`${API_BASE_URL}/tax-records/?${query.toString()}`, {
         headers: getAuthHeaders(),
       });
-      return handleApiResponse(res, 'Error al obtener calificaciones');
+      const data = await handleApiResponse(res, 'Error al obtener calificaciones');
+      if (Array.isArray(data)) {
+        return {
+          results: data,
+          count: data.length,
+          page: 1,
+          total_pages: 1,
+          next: null,
+          previous: null,
+        };
+      }
+      return {
+        results: data?.results || [],
+        count: data?.count ?? (data?.results?.length || 0),
+        page: data?.page || 1,
+        total_pages: data?.total_pages || 1,
+        next: data?.next || null,
+        previous: data?.previous || null,
+      };
     },
 
     async getById(id) {
