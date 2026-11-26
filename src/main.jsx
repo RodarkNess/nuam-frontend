@@ -273,7 +273,7 @@ function Sidebar({ screen, setScreen, onLogout, user, pendingApprovalsCount = 0 
     ['dashboard', 'Búsqueda de documentos', Search],
     ...(['supervisor', 'auditor', 'admin'].includes(role) ? [['approvals', 'Bandeja de aprobaciones', FileCheck2]] : []),
     ...(['supervisor', 'auditor', 'admin'].includes(role) ? [['audit', 'Auditoría y trazabilidad', ShieldCheck]] : []),
-    ...(['operador', 'supervisor'].includes(role) ? [['upload', 'Carga masiva', UploadCloud]] : []),
+    ...(['operador', 'supervisor', 'admin'].includes(role) ? [['upload', 'Carga masiva', UploadCloud]] : []),
     ...(role === 'admin' ? [['admin-users', 'Usuarios', UsersRound]] : []),
   ];
 
@@ -465,7 +465,7 @@ function Dashboard({ setScreen, setSelectedRecord, user, onLogout }) {
             <span className="eyebrow dark">CONSULTA INDEXADA</span>
             <h2>Búsqueda de documentos</h2>
           </div>
-          {['operador', 'supervisor'].includes(user?.profile?.role) && (
+          {['operador', 'supervisor', 'admin'].includes(user?.profile?.role) && (
             <button className="primary" onClick={() => { setSelectedRecord(null); setScreen('record-form'); }}>
               <Plus size={17} /> Nuevo expediente
             </button>
@@ -682,7 +682,7 @@ function Detail({ record, setScreen, setSelectedRecord, user, onLogout }) {
             <p>Folio: {rec?.folio} · Ejercicio: {rec?.year} · Origen: {rec?.origin}</p>
           </div>
           <div className="detail-actions">
-            {['operador', 'supervisor'].includes(user?.profile?.role) && (
+            {['operador', 'supervisor', 'admin'].includes(user?.profile?.role) && (
               <button
                 className="secondary"
                 onClick={() => { setSelectedRecord(rec); setScreen('record-form'); }}
@@ -873,9 +873,15 @@ function RecordForm({ record, setScreen, setSelectedRecord, user, onLogout }) {
             <label>Monto<input name="amount" type="number" step="0.01" min="0" defaultValue={record?.amount || ''} /></label>
             <label>Moneda<input name="currency" required maxLength="10" defaultValue={record?.currency || 'CLP'} /></label>
             <label>Origen<input name="origin" maxLength="100" defaultValue={record?.origin || ''} /></label>
-            <label>Documento original (PDF){record && <small>Opcional si no cambia el archivo actual.</small>}
-              <input name="document_file" type="file" accept="application/pdf,.pdf" required={!record} />
-            </label>
+            {record?.sha256_hash ? (
+              <label>Documento original (PDF)
+                <small>El documento original es inmutable (SHA-256 {record.sha256_hash.slice(0, 12)}…) y no puede reemplazarse.</small>
+              </label>
+            ) : (
+              <label>Documento original (PDF)
+                <input name="document_file" type="file" accept="application/pdf,.pdf" required={!record} />
+              </label>
+            )}
             <label>Notas<textarea name="notes" maxLength="5000" defaultValue={record?.notes || ''} /></label>
             {error && <div className="form-error" role="alert">{error}</div>}
             <div className="upload-actions">
@@ -1068,6 +1074,7 @@ function Upload({ setScreen, user, onLogout }) {
                   <thead>
                     <tr>
                       <th>Fila</th>
+                      <th>Columna</th>
                       <th>Error detectado</th>
                       <th>Estado</th>
                     </tr>
@@ -1076,6 +1083,7 @@ function Upload({ setScreen, user, onLogout }) {
                     {validationResult.errors?.map((err, idx) => (
                       <tr key={idx}>
                         <td><strong>{err.row}</strong></td>
+                        <td>{Array.isArray(err.fields) ? err.fields.join(', ') : '—'}</td>
                         <td style={{ color: '#a83226' }}>
                           {Array.isArray(err.errors) ? err.errors.join('; ') : (err.error || 'Error de validación')}
                         </td>
@@ -1645,7 +1653,7 @@ const ROLE_SCREENS = {
   operador: ['dashboard', 'detail', 'record-form', 'upload'],
   supervisor: ['dashboard', 'detail', 'record-form', 'upload', 'approvals', 'audit'],
   auditor: ['dashboard', 'detail', 'approvals', 'audit'],
-  admin: ['dashboard', 'detail', 'approvals', 'audit', 'admin-users'],
+  admin: ['dashboard', 'detail', 'record-form', 'upload', 'approvals', 'audit', 'admin-users'],
 };
 
 function App() {
